@@ -87,7 +87,8 @@ def compare_patients(hpoic, patient1, patient2, scores=None, use_aoo=False):
 
     p1_terms = patient1.hp_terms
     p2_terms = patient2.hp_terms
-    assert p1_terms and p2_terms
+    if not (p1_terms and p2_terms):
+        return None
     out = {}
 
     if use_aoo:
@@ -192,6 +193,30 @@ def compare_patients(hpoic, patient1, patient2, scores=None, use_aoo=False):
 
     return out
 
+def _add_HP_prefix(hpo_code):
+    if hpo_code.startswith('HP:'):
+        return hpo_code
+    else:
+        return 'HP:' + hpo_code
+
+def _patient_from_list(hpo_list, hpo):
+    hpo_list = [_add_HP_prefix(code) for code in hpo_list]
+    return Patient.from_row({'features': [{'id': code} for code in hpo_list],
+            'report_id': 0,
+            'external_id': 0}, hpo)
+
+def compare_side_by_side(hpo_sets1, hpo_sets2, hpo_filename, disease_phenotype_filename):
+    hpo = HPO(hpo_filename, new_root=PHENOTYPE_ROOT)
+    diseases = Diseases(disease_phenotype_filename)
+    hpoic = HPOIC(hpo, diseases)
+    results = []
+    for set1, set2 in zip(hpo_sets1, hpo_sets2):
+        p1, p2 = _patient_from_list(set1, hpo), _patient_from_list(set2, hpo)
+        sims = compare_patients(hpoic, p1, p2)
+        results.append(sims)
+    return results
+
+
 def script(patient_filename, hpo_filename, disease_phenotype_filename,
            orphanet_lookup_filename=None, orphanet_prevalence_filename=None, proto=None,
            use_disease_prevalence=False, use_phenotype_frequency=False,
@@ -210,6 +235,9 @@ def script(patient_filename, hpo_filename, disease_phenotype_filename,
         patients = [patient
                     for patient in Patient.iter_from_file(patient_filename, hpo)
                     if patient.hp_terms]
+        print(patients)
+        for p in patients:
+            print(p.hp_terms)
     elif patient_file_format == PATIENT_FILE_FORMAT_CSV:
         patients = [patient
                     for patient in Patient.iter_from_csv_file(patient_filename, hpo)
@@ -229,6 +257,7 @@ def script(patient_filename, hpo_filename, disease_phenotype_filename,
                   use_disease_prevalence=use_disease_prevalence,
                   use_phenotype_frequency=use_phenotype_frequency,
                   distribute_ic_to_leaves=distribute_ic_to_leaves)
+    print('One comparison {}'.format(compare_patients(hpoic, patients[0], patients[1])))
 
     total_patient_logprob = 0
     for patient in patients:
